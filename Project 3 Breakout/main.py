@@ -25,6 +25,7 @@ def run(args):
         env = Environment(env_name, args, atari_wrapper=True)
         from agent_dqn import Agent_DQN
         agent = Agent_DQN(env, args)
+        print("Device: ",device)
         agent.train()
 
     if args.test_dqn:

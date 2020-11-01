@@ -20,8 +20,8 @@ you can import any package and define any extra function as you need
 torch.manual_seed(595)
 np.random.seed(595)
 random.seed(595)
-Path_weights = './last_train_weights_ddqn_1.tar'
-Path_memory = './last_memory.tar'
+Path_weights = './last_train_weights_dueldqn.tar'
+Path_memory = './last_memory_dueldqn.tar'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class my_dataset(Dataset):
     def __init__(self,data):
@@ -47,18 +47,18 @@ class Agent_DQN(Agent):
         ###########################
         # YOUR IMPLEMENTATION HERE #
         self.epochs = 10
-        self.n_episodes = 1000000
+        self.n_episodes = 2000000
         self.env = env
         self.nA = self.env.action_space.n
         # self.nS = self.env.observation_space
         self.batch_size = 32
         self.DQN = DQN().to(device)
         self.Target_DQN = DQN().to(device)
-        self.buffer_memory = 300000
+        self.buffer_memory = 3000000
         self.train_buffer_size = 4
         self.min_buffer_size = 10000
         self.target_update_buffer =  10000
-        self.learning_rate = 0.0001
+        self.learning_rate = 0.00001
         self.discount_factor = 0.999
         self.epsilon = 1
         self.min_epsilon = 0.01
