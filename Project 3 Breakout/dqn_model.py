@@ -71,7 +71,7 @@ class DQN(nn.Module):
         # print(x.size())
         # x = self.pool(x)
         # print(x.shape)
-        x = x.view(-1,64*7*7)
+        x = x.reshape(-1,64*7*7)
         # print(x.size())
         x = F.relu(self.fc1(x))
         # print(x.size())

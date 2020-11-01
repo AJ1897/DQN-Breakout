@@ -1,13 +1,15 @@
 import argparse
 from test import test
 from environment import Environment
-
+import torch
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse():
     parser = argparse.ArgumentParser(description="DS595/CS525 RL Project 3")
     parser.add_argument('--env_name', default=None, help='environment name')
     parser.add_argument('--train_dqn', action='store_true', help='whether train DQN')
     parser.add_argument('--test_dqn', action='store_true', help='whether test DQN')
+    parser.add_argument('--cont', action='store_true', help='whether continue DQN')
     try:
         from argument import add_arguments
         parser = add_arguments(parser)

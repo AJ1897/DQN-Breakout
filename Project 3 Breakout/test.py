@@ -6,7 +6,7 @@ DO NOT revise this file
 import argparse
 import numpy as np
 from environment import Environment
-
+import time
 seed = 11037
 
 def parse():
@@ -25,20 +25,28 @@ def test(agent, env, total_episodes=30):
     rewards = []
     env.seed(seed)
     for i in range(total_episodes):
-        state = env.reset()
-        agent.init_game_setting()
+        state = np.transpose(env.reset(),(2,0,1))
+        # agent.init_game_setting()
         done = False
         episode_reward = 0.0
-
         #playing one game
+        print("Test Status: %d"%((i+1)*100/total_episodes),end = '\r')
+        y=0
         while(not done):
+            # if(i%20) == 0:
+            # print(y) 
+            # env.render()
             action = agent.make_action(state, test=True)
             state, reward, done, info = env.step(action)
+            state = np.transpose(state,(2,0,1))
             episode_reward += reward
+            y+=1
+            # time.sleep(0.03)
 
         rewards.append(episode_reward)
     print('Run %d episodes'%(total_episodes))
     print('Mean:', np.mean(rewards))
+    print("Reward List",rewards)
 
 
 def run(args):
