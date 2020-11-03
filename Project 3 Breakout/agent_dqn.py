@@ -58,12 +58,12 @@ class Agent_DQN(Agent):
         self.batch_size = 32
         self.DQN = DQN().to(device)
         self.Target_DQN = DQN().to(device)
-        self.buffer_memory = 3000000
+        self.buffer_memory = 1000000
         self.train_buffer_size = 4
         self.min_buffer_size = 10000
         self.target_update_buffer =  10000
-        self.learning_rate = 0.00001
-        self.discount_factor = 0.999
+        self.learning_rate = 0.00006
+        self.discount_factor = 0.99
         self.epsilon = 1
         self.min_epsilon = 0.01
         # self.decay_rate = 0.999
@@ -266,7 +266,7 @@ class Agent_DQN(Agent):
                   'next_info':[self.next_obs,self.done],
                   'epsilon':self.epsilon,
                   # 'buffer':self.buffer,
-                  'reward_list':self.reward_list
+                  #'reward_list':self.reward_list
                   }
                   ,Path_memory)
 
