@@ -86,11 +86,11 @@ class Agent_DQN(Agent):
           print("#"*50+"Resuming Training"+"#"*50)
           dic_weights = torch.load(Path_weights,map_location=device)
           dic_memory = torch.load(Path_memory)
-          # self.epsilon = dic_memory['epsilon']
-          self.epsilon = 0.0001
+          self.epsilon = dic_memory['epsilon']
+          #self.epsilon = 0.0001
           self.x = dic_memory['x']
           print(self.x)
-          self.ep_decrement = (self.epsilon - self.min_epsilon)/(self.n_episodes)
+          self.ep_decrement = (1 - self.min_epsilon)/(self.n_episodes)
           self.current = dic_memory['current_info'][0]
           self.current_target = dic_memory['current_info'][1]
           self.current_train = dic_memory['current_info'][2]
