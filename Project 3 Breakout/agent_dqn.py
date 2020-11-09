@@ -115,7 +115,7 @@ class Agent_DQN(Agent):
         self.max_test_reward=0
         self.head_list = list(range(self.n_heads))
 
-        writer.add_hparams({"Learning_Rate":self.learning_rate,"Batch_Size":self.batch_size,"Discount Factor":self.discount_factor,"Min Epsilon":self.min_epsilon,"Total Episodes":self.n_episodes,"Buffer Size":self.buffer_memory},{"Max__Test_Reward":self.max_test_reward})
+        writer.add_hparams({"Learning_Rate":self.learning_rate,"Batch_Size":self.batch_size,"Discount Factor":self.discount_factor,"Total Episodes":self.n_episodes,"Buffer Size":self.buffer_memory},{"Max__Test_Reward":self.max_test_reward})
         
         ############# Continue Training #############
         
