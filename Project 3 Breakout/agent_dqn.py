@@ -198,7 +198,7 @@ class Agent_DQN(Agent):
         if p < self.epsilon:
             action = np.random.randint(0,self.nA)
         else:
-            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
+            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device),None)
             if active_head is not None:
                 action = torch.argmax(q_values,dim = 1).item()
             else:
