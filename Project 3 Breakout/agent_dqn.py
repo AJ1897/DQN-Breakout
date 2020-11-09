@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import random
 import numpy as np
-from collections import deque
+from collections import deque,Counter
 import os
 import sys
 
@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset
 from agent import Agent
-from dqn_model import DQN
+from dqn_model import BootNet
 from torch.utils.tensorboard import SummaryWriter
 """
 you can import any package and define any extra function as you need
@@ -29,6 +29,9 @@ tensor_board_dir='./logs/train_data'
 writer = SummaryWriter(tensor_board_dir)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: ",device)
+
+
+
 class my_dataset(Dataset):
     def __init__(self,data):
         self.samples = data
@@ -36,6 +39,7 @@ class my_dataset(Dataset):
         return len(self.samples)
     def __getitem__(self,idx):
         return self.samples[idx]
+
 
 class Agent_DQN(Agent):
     def __init__(self, env, args):
@@ -52,36 +56,56 @@ class Agent_DQN(Agent):
         super(Agent_DQN,self).__init__(env)
         ###########################
         # YOUR IMPLEMENTATION HERE #
+        
+        ############# Train Parameters #############
+        
         self.epochs = 10
         self.args = args
         self.n_episodes = 10000000
         self.env = env
         self.nA = self.env.action_space.n
-        # self.nS = self.env.observation_space
         self.batch_size = 32
         self.eval_num=0
-        self.DQN = DQN().to(device)
-        self.Target_DQN = DQN().to(device)
-        test_case = torch.zeros(32,4,84,84)
-        writer.add_graph(DQN(),test_case)
-        self.buffer_memory = 1000000
-        self.train_buffer_size = 4
-        self.min_buffer_size = 10000
-        self.target_update_buffer =  50000
-        self.learning_rate = 0.00006
+        self.n_heads = self.args.n_heads
+        self.learning_rate = 0.0000625
         self.discount_factor = 0.99
-        self.epsilon = 1
-        self.min_epsilon = 0.001
-        # self.decay_rate = 0.999
-        self.ep_decrement = (self.epsilon - self.min_epsilon)/self.n_episodes
-        self.criteria = nn.SmoothL1Loss()
-        self.optimiser = optim.Adam(self.DQN.parameters(),self.learning_rate)
-        self.buffer=[]
         self.Evaluation = 100000
         self.total_evaluation__episodes = 100
         self.full_train = 100000
+        
+        ############# Model Parameters #############
+        self.Duel_DQN = True
+        self.Double_DQN = True
+        self.DQN = BootNet(self.Duel_DQN).to(device)
+        self.Target_DQN = BootNet(self.Duel_DQN).to(device)
+        self.criteria = nn.SmoothL1Loss()
+        self.optimiser = optim.Adam(self.DQN.parameters(),self.learning_rate)
+
+        ############# Buffer Parameters #############
+        
+        self.buffer_memory = 1000000
+        self.train_buffer_size = 4
+        self.min_buffer_size = 50000
+        self.target_update_buffer = 10000
+        self.buffer=[]
+        
+        ############# Epsilon Parameters #############
+        
+        self.max_steps = 25000000
+        self.annealing_steps = 100000
+        self.start_epsilon = 1
+        self.end_epsilon_1 = 0.1
+        self.end_epsilon_2 = 0.01
+        self.slope1 = (self.start_epsilon - self.end_epsilon_1 = 0.1)/self.annealing_steps
+        self.constant1 = self.start_epsilon - self.slope1*self.min_buffer_size
+        self.slope2 = (self.end_epsilon_1 - self.end_epsilon_2)/(self.max_steps - self.annealing_steps - self.min_buffer_size)
+        self.constant1 = self.end_epsilon_2 - self.slope2*self.max_steps
+
+        ############# Other Train Parameters #############
+        
         self.next_obs = np.transpose(self.env.reset(),(2,0,1))
         self.done = False
+        self.terminal = False
         self.x = 0
         self.current = 0
         self.reward_list =[]
@@ -89,7 +113,12 @@ class Agent_DQN(Agent):
         self.current_train = 0
         self.current_target = 0
         self.max_test_reward=0
+        self.head_list = list(range(self.n_heads))
+
         writer.add_hparams({"Learning_Rate":self.learning_rate,"Batch_Size":self.batch_size,"Discount Factor":self.discount_factor,"Min Epsilon":self.min_epsilon,"Total Episodes":self.n_episodes,"Buffer Size":self.buffer_memory},{"Max__Test_Reward":self.max_test_reward})
+        
+        ############# Continue Training #############
+        
         if args.cont:
           print("#"*50+"Resuming Training"+"#"*50)
           dic_weights = torch.load(Path_weights,map_location=device)
@@ -104,23 +133,24 @@ class Agent_DQN(Agent):
           self.current_train = dic_memory['current_info'][2]
           self.next_obs = dic_memory['next_info'][0]
           self.done = dic_memory['next_info'][1]
-          # self.buffer = dic_memory['buffer']
-          # self.buffer = []
-          # self.reward_list = dic_memory['reward_list']
+          self.terminal = dic_memory['next_info'][2]
           self.reward_list = []
           self.DQN.load_state_dict(dic_weights['train_state_dict'])
           self.Target_DQN.load_state_dict(dic_weights['target_state_dict'])
           self.DQN.train()
           self.Target_DQN.train()
           self.optimiser.load_state_dict(dic_weights['optimiser_state_dict'])
+        
+        ############# Testing #############
+        
         if args.test_dqn:
             #you can load your model here
             print('loading trained model')
             ###########################
             # YOUR IMPLEMENTATION HERE #
             dic_weights = torch.load(Path_weights,map_location=device)
-            self.Target_DQN.load_state_dict(dic_weights['target_state_dict'])
-            self.Target_DQN.eval()
+            self.DQN.load_state_dict(dic_weights['train_state_dict'])
+            self.DQN.eval()
             
 
     def init_game_setting(self):
@@ -136,7 +166,7 @@ class Agent_DQN(Agent):
         pass
     
     
-    def make_action(self, observation, test=True):
+    def make_action(self, observation, active_head = None, test=True):
         """
         Return predicted action of your agent
         Input:
@@ -148,16 +178,34 @@ class Agent_DQN(Agent):
         """
         ###########################
         # YOUR IMPLEMENTATION HERE #
-        if not test:
-            p = random.random()
-            if p < self.epsilon:
-                action = np.random.randint(0,self.nA)
-            else:
-                a = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
-                action = np.argmax(a.detach().cpu().numpy())
+        
+        if test:
+            self.epsilon = 0
+        
+        elif self.current < self.min_buffer_size:
+            self.epsilon = 1
+        
+        elif self.current >= self.min_buffer_size and self.current < self.min_buffer_size + self.annealing_steps:
+            self.epsilon = self.current*self.slope1 + self.constant1
+        
+        elif self.current >= self.min_buffer_size + self.annealing_steps:
+            self.epsilon = self.current*self.slope2 + self.constant2
+        
         else:
-            a = self.Target_DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
-            action = np.argmax(a.detach().cpu().numpy())
+            self.epsilon = 0
+
+        p = np.random.rand()
+        if p < self.epsilon:
+            action = np.random.randint(0,self.nA)
+        else:
+            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
+            if active_head is not None:
+                action = torch.argmax(q_values,dim = 1).item()
+            else:
+                acts = [torch.argmax(q_values[k],dim = 1) for k in range(self.n_heads)]
+                data = Counter(acts)
+                action = data.most_common(1)[0][0]
+
         ###########################
         return action
     
@@ -195,10 +243,54 @@ class Agent_DQN(Agent):
         rew = torch.from_numpy(np.asarray(batch[2]))
         dones = torch.from_numpy(np.asarray(batch[3]))
         batch_y = torch.from_numpy(np.asarray(batch[4]))
+        mask = torch.from_numpy(np.asarray(batch[5]))
         # print(act.shape)
         ###########################
         return batch_x,act,rew,dones,batch_y
         
+
+    def learn(self):
+        
+        self.optimiser.zero_grad()
+        
+        batch_x,act,rew,dones,batch_y,mask = self.replay_buffer()
+        
+        Predicted_q_vals_list = self.DQN(batch_x.to(device),None)
+        Target_q_vals_list = self.Target_DQN(batch_y.to(device),None)
+        Target_policy_vals_list = self.DQN(batch_y.to(device),None)
+        count_losses = []
+        for k in range(self.n_heads):
+            
+            total_used = torch.sum(masks[:,k])
+            
+            if total_used > 0:
+                Target_q_values = Target_q_vals_list[k].data
+                
+                if (self.Double_DQN):
+                    next_actions = Target_policy_vals_list[k].data.max(1,True)[1]
+                    Y = Target_q_values.gather(1,next_actions).squeeze(1)
+                else:
+                    Y = Target_q_values.max(1,True)[0]
+
+                Predicted_q_values = Predicted_q_vals_list[k].data.gather(1,actions[:,None]).squeeze(1)
+                Y[dones] = 0
+                Y = Y*self.discount_factor + rew.to(device)
+
+                actual_loss = self.criteria(Predicted_q_values,Y)
+                propagated_loss = masks[:,k]*actual_loss
+                loss = torch.sum(propagated_loss/total_used)
+                count_losses.append(loss)
+
+        loss = sum(count_losses)/self.n_heads
+        loss.backward()
+
+        for param in seld.DQN.conv_net.parameters():
+            if param.grad is not None:
+                param.grad.data *= 1.0/self.n_heads
+
+        nn.utils.clip_grad_norm_(self.DQN.parameters(),5)
+        self.optimiser.step()
+
 
     def train(self):
         """
@@ -207,62 +299,68 @@ class Agent_DQN(Agent):
         ###########################
         # YOUR IMPLEMENTATION HERE #
         for x in range(self.x,self.n_episodes):
-            # obs = np.transpose(self.env.reset(),(2,0,1))
-            # print("Episode No. : %d"%x)
+            
             obs = self.next_obs
-            # print(obs[0][40][:])
             done = self.done
             accumulated_rewards = 0
-            while (not done):
-                # self.env.render()
-                action = self.make_action(obs,False)
+            np.random.shuffle(self.head_list)
+            terminal = self.terminal
+            active_head = self.head_list[0]
+            
+            while not terminal:
+                
+                if 0:
+                    action = 1
+                else:
+                    action = self.make_action(obs,active_head,False)
+                
                 next_obs,reward,done,info = self.env.step(action)
+                
+                if info['ale.lives'] == 0:
+                    terminal = True
+                
                 next_obs = np.transpose(next_obs,(2,0,1))
-                # print(info['ale.lives'])
-                # print(np.shape(e_list[-1]))
+                masks = np.random.binomial(1,0.9,self.n_heads)
                 accumulated_rewards+=reward
-                self.push([obs,action,reward,done,next_obs])
-                if self.epsilon > self.min_epsilon:
-                  self.epsilon-=self.ep_decrement
+                
+                self.push([obs,action,reward,done,next_obs,masks])
+                
                 self.current+=1
                 self.current_train += 1
                 self.current_target += 1
                 obs = next_obs
+                
                 if self.current_train % self.train_buffer_size == 0 and len(self.buffer) > self.min_buffer_size:
-                    batch_x,act,rew,dones,batch_y = self.replay_buffer()
-                    self.optimiser.zero_grad()
-                    future_return =  self.Target_DQN(batch_y.to(device)).max(1)[0].detach() * self.discount_factor
-                    future_return[dones] = 0
-                    y = rew.to(device) + future_return
-                    c_q = self.DQN(batch_x.to(device)).gather(1,act.to(device))
-                    loss = self.criteria(c_q.double(),(y.double()).unsqueeze(1))
-                    # loss_list.append(loss.detach())
-                    loss.backward()
-                    # self.env.render()
-                    self.optimiser.step()
+                    self.learn()
                     self.current_train = 0
 
-                if self.current_target > self.target_update_buffer:
+                if self.current_target > self.target_update_buffer and len(self.buffer) > self.min_buffer_size:
                     self.Target_DQN.load_state_dict(self.DQN.state_dict())
                     self.current_target = 0
 
                 
                 if self.current % self.Evaluation == 0:
-                    # print("\n Weights: \n",list(self.DQN.parameters()),"\r")
+
                     print("\n","#" * 40, "Evaluation number %d"%(self.current/self.Evaluation),"#" * 40)
                     self.eval_num = self.current/self.Evaluation
                     env1 = Environment('BreakoutNoFrameskip-v4', self.args, atari_wrapper=True, test=True)
                     test(self,env1,total_episodes=100)
                     writer.add_scalar("Test/Max_test_Reward",self.max_test_reward,self.eval_num)
                     print("#" * 40, "Evaluation Ended!","#" * 40,"\n")
+            
             self.next_obs = np.transpose(self.env.reset(),(2,0,1))
-            self.done = False
+            self.done = True
+            self.terminal = False
             self.reward_list.append(accumulated_rewards)
-            writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),x)
+
+            writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),x+1)
+
             if len(self.reward_list) % 200 == 0:
                 self.reward_list = self.reward_list[-150:]
+            
             if (x+1)%100 == 0:
                 print("Current = %d, episode = %d, Average_reward = %0.2f, epsilon = %0.2f"%(self.current, x+1, np.mean(self.reward_list[-100:]), self.epsilon))
+            
             if (x+1)%3000 == 0:
                 print("Saving_Weights_Model")
                 torch.save({
@@ -270,11 +368,12 @@ class Agent_DQN(Agent):
                   'train_state_dict':self.DQN.state_dict(),
                   'optimiser_state_dict':self.optimiser.state_dict()
                   },Path_weights)
+                
                 print("Saving_Memory_Info")
                 torch.save({
                   'current_info':[self.current,self.current_target,self.current_train],
                   'x':x+1,
-                  'next_info':[self.next_obs,self.done],
+                  'next_info':[self.next_obs,self.done,self.terminal],
                   'epsilon':self.epsilon,
                   # 'buffer':self.buffer,
                   #'reward_list':self.reward_list

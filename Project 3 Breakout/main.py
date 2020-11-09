@@ -10,6 +10,7 @@ def parse():
     parser.add_argument('--train_dqn', action='store_true', help='whether train DQN')
     parser.add_argument('--test_dqn', action='store_true', help='whether test DQN')
     parser.add_argument('--cont', action='store_true', help='whether continue DQN')
+    parser.add_argument('--n_heads', default=1, help='whether n_heads')
     try:
         from argument import add_arguments
         parser = add_arguments(parser)
@@ -26,6 +27,7 @@ def run(args):
         from agent_dqn import Agent_DQN
         agent = Agent_DQN(env, args)
         print("Device: ",device)
+        print("n_heads: ",args.n_heads)
         agent.train()
 
     if args.test_dqn:
