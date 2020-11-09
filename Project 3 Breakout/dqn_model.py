@@ -37,8 +37,10 @@ class DQN(nn.Module):
         # self.pool =nn.MaxPool2d(3,3)
         self.conv2 = nn.Conv2d(32,64,kernel_size = 4, stride = 2)
         self.conv3 = nn.Conv2d(64,64,kernel_size = 3, stride = 1)
-        self.fc1 = nn.Linear(64*7*7,512)
-        self.fc2 = nn.Linear(512,4)
+        self.fc1_val = nn.Linear(64*7*7,512)
+        self.fc1_adv = nn.Linear(64*7*7,512)
+        self.fc2_val = nn.Linear(512,1)
+        self.fc2_adv = nn.Linear(512,4)
         ###########################
         # YOUR IMPLEMENTATION HERE #
 
@@ -52,31 +54,12 @@ class DQN(nn.Module):
         # YOUR IMPLEMENTATION HERE #
         # print((x[0][0][0][0]))
         x = x.float()/255
-        # print(x)
-        # print(x.size())
-        # x = F.relu(self.conv1(x))
-        # x = self.pool(x)
-        # x = F.relu(self.conv2(x))
-        # x = self.pool(x)
-        # x = x.view(-1,16*8*8)
-        # x = F.relu(self.fc1(x))
-        # x = F.relu(self.fc2(x))
-        # x = self.fc3(x)
         x = F.relu(self.conv1(x))
-        # print(x.size())
-        # x = self.pool(x)
         x = F.relu(self.conv2(x))
-        # print(x.size())
         x = F.relu(self.conv3(x))
-        # print(x.size())
-        # x = self.pool(x)
-        # print(x.shape)
-        x = x.view(-1,64*7*7)
-        # print(x.size())
-        x = F.relu(self.fc1(x))
-        # print(x.size())
-        x = self.fc2(x)
-        # print(x.size())
-        # x = self.fc3(x)
+        x = x.reshape(-1,64*7*7)
+        val = self.fc2_val(F.relu(self.fc1_val(x)))
+        adv = self.fc2_adv(F.relu(self.fc1_adv(x)))
+        x = val + adv - adv.mean()
         ###########################
         return x
