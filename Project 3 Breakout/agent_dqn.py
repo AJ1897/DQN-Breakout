@@ -76,8 +76,8 @@ class Agent_DQN(Agent):
         ############# Model Parameters #############
         self.Duel_DQN = True
         self.Double_DQN = True
-        self.DQN = BootNet(self.Duel_DQN).to(device)
-        self.Target_DQN = BootNet(self.Duel_DQN).to(device)
+        self.DQN = BootNet(self.n_heads,self.Duel_DQN).to(device)
+        self.Target_DQN = BootNet(self.n_heads,self.Duel_DQN).to(device)
         self.criteria = nn.SmoothL1Loss()
         self.optimiser = optim.Adam(self.DQN.parameters(),self.learning_rate)
 
