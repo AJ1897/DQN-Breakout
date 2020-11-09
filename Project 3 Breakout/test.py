@@ -10,7 +10,7 @@ import time
 import torch
 seed = 11037
 from torch.utils.tensorboard import SummaryWriter
-Path_test_weights = './max_test_weights_dueldqn_2.tar'
+Path_test_weights = './max_test_weights_bootdqn.tar'
 tensor_board_dir='./logs/test_data'
 #writer = SummaryWriter(tensor_board_dir) 
 def parse():

@@ -23,8 +23,8 @@ you can import any package and define any extra function as you need
 torch.manual_seed(595)
 np.random.seed(595)
 random.seed(595)
-Path_weights = './last_train_weights_dueldqn.tar'
-Path_memory = './last_memory_dueldqn.tar'
+Path_weights = './last_train_weights_bootdqn.tar'
+Path_memory = './last_memory_bootdqn.tar'
 tensor_board_dir='./logs/train_data'
 writer = SummaryWriter(tensor_board_dir)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
