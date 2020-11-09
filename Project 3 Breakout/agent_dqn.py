@@ -96,7 +96,7 @@ class Agent_DQN(Agent):
         self.start_epsilon = 1
         self.end_epsilon_1 = 0.1
         self.end_epsilon_2 = 0.01
-        self.slope1 = (self.start_epsilon - self.end_epsilon_1 = 0.1)/self.annealing_steps
+        self.slope1 = (self.start_epsilon - self.end_epsilon_1)/self.annealing_steps
         self.constant1 = self.start_epsilon - self.slope1*self.min_buffer_size
         self.slope2 = (self.end_epsilon_1 - self.end_epsilon_2)/(self.max_steps - self.annealing_steps - self.min_buffer_size)
         self.constant1 = self.end_epsilon_2 - self.slope2*self.max_steps
