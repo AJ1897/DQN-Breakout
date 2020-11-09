@@ -198,7 +198,7 @@ class Agent_DQN(Agent):
         if p < self.epsilon:
             action = np.random.randint(0,self.nA)
         else:
-            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device),None)
+            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
             if active_head is not None:
                 action = torch.argmax(q_values,dim = 1).item()
             else:
@@ -255,9 +255,9 @@ class Agent_DQN(Agent):
         
         batch_x,act,rew,dones,batch_y,mask = self.replay_buffer()
         
-        Predicted_q_vals_list = self.DQN(batch_x.to(device),None)
-        Target_q_vals_list = self.Target_DQN(batch_y.to(device),None)
-        Target_policy_vals_list = self.DQN(batch_y.to(device),None)
+        Predicted_q_vals_list = self.DQN(batch_x.to(device))
+        Target_q_vals_list = self.Target_DQN(batch_y.to(device))
+        Target_policy_vals_list = self.DQN(batch_y.to(device))
         count_losses = []
         for k in range(self.n_heads):
             
