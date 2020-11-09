@@ -15,6 +15,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset
 from agent import Agent
 from dqn_model import DQN
+from torch.utils.tensorboard import SummaryWriter
 """
 you can import any package and define any extra function as you need
 """
@@ -24,6 +25,8 @@ np.random.seed(595)
 random.seed(595)
 Path_weights = './last_train_weights_dueldqn.tar'
 Path_memory = './last_memory_dueldqn.tar'
+tensor_board_dir='./logs/train_data'
+writer = SummaryWriter(tensor_board_dir)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: ",device)
 class my_dataset(Dataset):
@@ -51,21 +54,24 @@ class Agent_DQN(Agent):
         # YOUR IMPLEMENTATION HERE #
         self.epochs = 10
         self.args = args
-        self.n_episodes = 5000000
+        self.n_episodes = 10000000
         self.env = env
         self.nA = self.env.action_space.n
         # self.nS = self.env.observation_space
         self.batch_size = 32
+        self.eval_num=0
         self.DQN = DQN().to(device)
         self.Target_DQN = DQN().to(device)
+        test_case = torch.zeros(32,4,84,84)
+        writer.add_graph(DQN(),test_case)
         self.buffer_memory = 1000000
         self.train_buffer_size = 4
         self.min_buffer_size = 10000
-        self.target_update_buffer =  10000
+        self.target_update_buffer =  50000
         self.learning_rate = 0.00006
         self.discount_factor = 0.99
         self.epsilon = 1
-        self.min_epsilon = 0.01
+        self.min_epsilon = 0.001
         # self.decay_rate = 0.999
         self.ep_decrement = (self.epsilon - self.min_epsilon)/self.n_episodes
         self.criteria = nn.SmoothL1Loss()
@@ -82,6 +88,8 @@ class Agent_DQN(Agent):
         self.loss_list= []
         self.current_train = 0
         self.current_target = 0
+        self.max_test_reward=0
+        writer.add_hparams({"Learning_Rate":self.learning_rate,"Batch_Size":self.batch_size,"Discount Factor":self.discount_factor,"Min Epsilon":self.min_epsilon,"Total Episodes":self.n_episodes,"Buffer Size":self.buffer_memory},{"Max__Test_Reward":self.max_test_reward})
         if args.cont:
           print("#"*50+"Resuming Training"+"#"*50)
           dic_weights = torch.load(Path_weights,map_location=device)
@@ -242,12 +250,15 @@ class Agent_DQN(Agent):
                 if self.current % self.Evaluation == 0:
                     # print("\n Weights: \n",list(self.DQN.parameters()),"\r")
                     print("\n","#" * 40, "Evaluation number %d"%(self.current/self.Evaluation),"#" * 40)
+                    self.eval_num = self.current/self.Evaluation
                     env1 = Environment('BreakoutNoFrameskip-v4', self.args, atari_wrapper=True, test=True)
                     test(self,env1,total_episodes=100)
+                    writer.add_scalar("Test/Max_test_Reward",self.max_test_reward,self.eval_num)
                     print("#" * 40, "Evaluation Ended!","#" * 40,"\n")
             self.next_obs = np.transpose(self.env.reset(),(2,0,1))
             self.done = False
             self.reward_list.append(accumulated_rewards)
+            writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),x)
             if len(self.reward_list) % 200 == 0:
                 self.reward_list = self.reward_list[-150:]
             if (x+1)%100 == 0:
