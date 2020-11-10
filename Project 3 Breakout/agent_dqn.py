@@ -66,16 +66,16 @@ class Agent_DQN(Agent):
         self.nA = self.env.action_space.n
         self.batch_size = 32
         self.eval_num=0
-        self.n_heads = self.args.n_heads
+        self.n_heads = int(self.args.n_heads)
         self.learning_rate = 0.0000625
         self.discount_factor = 0.99
-        self.Evaluation = 100000
+        self.Evaluation = 1000000
         self.total_evaluation__episodes = 100
         self.full_train = 100000
         
         ############# Model Parameters #############
         self.Duel_DQN = True
-        self.Double_DQN = True
+        self.Double_DQN = False
         self.DQN = BootNet(self.n_heads,self.Duel_DQN).to(device)
         self.Target_DQN = BootNet(self.n_heads,self.Duel_DQN).to(device)
         self.criteria = nn.SmoothL1Loss()
@@ -92,14 +92,14 @@ class Agent_DQN(Agent):
         ############# Epsilon Parameters #############
         
         self.max_steps = 25000000
-        self.annealing_steps = 100000
+        self.annealing_steps = 1000000
         self.start_epsilon = 1
         self.end_epsilon_1 = 0.1
         self.end_epsilon_2 = 0.01
-        self.slope1 = (self.start_epsilon - self.end_epsilon_1)/self.annealing_steps
+        self.slope1 = -(self.start_epsilon - self.end_epsilon_1)/self.annealing_steps
         self.constant1 = self.start_epsilon - self.slope1*self.min_buffer_size
-        self.slope2 = (self.end_epsilon_1 - self.end_epsilon_2)/(self.max_steps - self.annealing_steps - self.min_buffer_size)
-        self.constant1 = self.end_epsilon_2 - self.slope2*self.max_steps
+        self.slope2 = -(self.end_epsilon_1 - self.end_epsilon_2)/(self.max_steps - self.annealing_steps - self.min_buffer_size)
+        self.constant2 = self.end_epsilon_2 - self.slope2*self.max_steps
 
         ############# Other Train Parameters #############
         
@@ -107,6 +107,7 @@ class Agent_DQN(Agent):
         self.done = False
         self.terminal = False
         self.x = 0
+        self.ep = 0
         self.current = 0
         self.reward_list =[]
         self.loss_list= []
@@ -126,6 +127,7 @@ class Agent_DQN(Agent):
           self.epsilon = dic_memory['epsilon']
           #self.epsilon = 0.0001
           self.x = dic_memory['x']
+          self.ep = dic_memory['ep']
           print(self.x)
           self.ep_decrement = (1 - self.min_epsilon)/(self.n_episodes)
           self.current = dic_memory['current_info'][0]
@@ -198,13 +200,14 @@ class Agent_DQN(Agent):
         if p < self.epsilon:
             action = np.random.randint(0,self.nA)
         else:
-            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device))
+            q_values = self.DQN(torch.from_numpy(observation).unsqueeze(0).to(device),active_head)
             if active_head is not None:
-                action = torch.argmax(q_values,dim = 1).item()
+                action = torch.argmax(q_values.data,dim = 1).item()
             else:
-                acts = [torch.argmax(q_values[k],dim = 1) for k in range(self.n_heads)]
+                acts = [torch.argmax(q_values[k].data,dim = 1).item() for k in range(self.n_heads)]
                 data = Counter(acts)
                 action = data.most_common(1)[0][0]
+                # print(action)
 
         ###########################
         return action
@@ -239,25 +242,26 @@ class Agent_DQN(Agent):
         batch = list(zip(*batch))
         # print(np.asarray(batch[1]))
         batch_x = torch.from_numpy(np.asarray(batch[0]))
-        act = torch.from_numpy(np.vstack(batch[1]))
+        act = torch.from_numpy(np.asarray(batch[1]))
         rew = torch.from_numpy(np.asarray(batch[2]))
-        dones = torch.from_numpy(np.asarray(batch[3]))
+        dones = torch.from_numpy(np.asarray(batch[3])).to(device)
         batch_y = torch.from_numpy(np.asarray(batch[4]))
-        mask = torch.from_numpy(np.asarray(batch[5]))
+        mask = torch.from_numpy(np.asarray(batch[5])).to(device)
         # print(act.shape)
         ###########################
-        return batch_x,act,rew,dones,batch_y
+        return batch_x,act,rew,dones,batch_y,mask
         
 
     def learn(self):
         
         self.optimiser.zero_grad()
         
-        batch_x,act,rew,dones,batch_y,mask = self.replay_buffer()
-        
+        batch_x,actions,rew,dones,batch_y,masks = self.replay_buffer()
+        # print(' ',batch_x.size(),'\n',actions.size(),'\n',rew.size(),'\n',dones.size(),'\n',batch_y.size(),'\n',masks.size(),'\n')
         Predicted_q_vals_list = self.DQN(batch_x.to(device))
         Target_q_vals_list = self.Target_DQN(batch_y.to(device))
         Target_policy_vals_list = self.DQN(batch_y.to(device))
+        # print('',len(Predicted_q_vals_list),'\n',len(Target_q_vals_list),'\n',len(Target_policy_vals_list),'\n')
         count_losses = []
         for k in range(self.n_heads):
             
@@ -270,13 +274,15 @@ class Agent_DQN(Agent):
                     next_actions = Target_policy_vals_list[k].data.max(1,True)[1]
                     Y = Target_q_values.gather(1,next_actions).squeeze(1)
                 else:
-                    Y = Target_q_values.max(1,True)[0]
-
-                Predicted_q_values = Predicted_q_vals_list[k].data.gather(1,actions[:,None]).squeeze(1)
+                    Y = Target_q_values.max(1,True)[0].squeeze(1)
+                # print('',Y.size(),'\n')
+                Predicted_q_values = Predicted_q_vals_list[k].gather(1,actions[:,None].to(device)).squeeze(1)
                 Y[dones] = 0
                 Y = Y*self.discount_factor + rew.to(device)
-
-                actual_loss = self.criteria(Predicted_q_values,Y)
+                # print('',Predicted_q_values.size(),'\n',Y.size(),'\n')
+                actual_loss = self.criteria(Predicted_q_values.double(),Y.double())
+                # actual_loss.backward()
+                # self.optimiser.step()
                 propagated_loss = masks[:,k]*actual_loss
                 loss = torch.sum(propagated_loss/total_used)
                 count_losses.append(loss)
@@ -284,11 +290,11 @@ class Agent_DQN(Agent):
         loss = sum(count_losses)/self.n_heads
         loss.backward()
 
-        for param in seld.DQN.conv_net.parameters():
-            if param.grad is not None:
-                param.grad.data *= 1.0/self.n_heads
+        # for param in seld.DQN.conv_net.parameters():
+        #     if param.grad is not None:
+        #         param.grad.data *= 1.0/self.n_heads
 
-        nn.utils.clip_grad_norm_(self.DQN.parameters(),5)
+        # nn.utils.clip_grad_norm_(self.DQN.parameters(),5)
         self.optimiser.step()
 
 
@@ -298,15 +304,15 @@ class Agent_DQN(Agent):
         """
         ###########################
         # YOUR IMPLEMENTATION HERE #
+        ep = self.ep
         for x in range(self.x,self.n_episodes):
             
             obs = self.next_obs
             done = self.done
-            accumulated_rewards = 0
             np.random.shuffle(self.head_list)
             terminal = self.terminal
             active_head = self.head_list[0]
-            
+            accumulated_rewards = 0
             while not terminal:
                 
                 if 0:
@@ -320,7 +326,7 @@ class Agent_DQN(Agent):
                     terminal = True
                 
                 next_obs = np.transpose(next_obs,(2,0,1))
-                masks = np.random.binomial(1,0.9,self.n_heads)
+                masks = np.random.binomial(1,1,self.n_heads)
                 accumulated_rewards+=reward
                 
                 self.push([obs,action,reward,done,next_obs,masks])
@@ -340,28 +346,32 @@ class Agent_DQN(Agent):
 
                 
                 if self.current % self.Evaluation == 0:
-
                     print("\n","#" * 40, "Evaluation number %d"%(self.current/self.Evaluation),"#" * 40)
                     self.eval_num = self.current/self.Evaluation
                     env1 = Environment('BreakoutNoFrameskip-v4', self.args, atari_wrapper=True, test=True)
                     test(self,env1,total_episodes=100)
                     writer.add_scalar("Test/Max_test_Reward",self.max_test_reward,self.eval_num)
                     print("#" * 40, "Evaluation Ended!","#" * 40,"\n")
+                
+                if done:
+                  self.reward_list.append(accumulated_rewards)
+                  accumulated_rewards = 0
+                  writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),ep+1)
+                  ep+=1
             
             self.next_obs = np.transpose(self.env.reset(),(2,0,1))
             self.done = True
             self.terminal = False
-            self.reward_list.append(accumulated_rewards)
 
-            writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),x+1)
+            # writer.add_scalar('Train/Episodic_Reward(Mean of last 30)',np.mean(self.reward_list[-30:]),x+1)
 
             if len(self.reward_list) % 200 == 0:
                 self.reward_list = self.reward_list[-150:]
             
-            if (x+1)%100 == 0:
-                print("Current = %d, episode = %d, Average_reward = %0.2f, epsilon = %0.2f"%(self.current, x+1, np.mean(self.reward_list[-100:]), self.epsilon))
+            if (x+1)%20 == 0:
+                print("Current = %d, episode = %d, Average_reward = %0.2f, epsilon = %0.2f"%(self.current, ep, np.mean(self.reward_list[-100:]), self.epsilon))
             
-            if (x+1)%3000 == 0:
+            if (x+1)%200 == 0:
                 print("Saving_Weights_Model")
                 torch.save({
                   'target_state_dict':self.Target_DQN.state_dict(),
@@ -373,6 +383,7 @@ class Agent_DQN(Agent):
                 torch.save({
                   'current_info':[self.current,self.current_target,self.current_train],
                   'x':x+1,
+                  'ep':ep+1,
                   'next_info':[self.next_obs,self.done,self.terminal],
                   'epsilon':self.epsilon,
                   # 'buffer':self.buffer,
